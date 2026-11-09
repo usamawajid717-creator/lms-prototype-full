@@ -10,15 +10,15 @@
         border: 0;
         border-radius: 1.25rem;
         color: #fff;
-        background: linear-gradient(120deg, #163f67, #247da0);
-        box-shadow: 0 14px 34px rgba(31, 97, 141, 0.18);
+        background: linear-gradient(120deg, var(--library-forest-dark), var(--library-forest));
+        box-shadow: 0 14px 34px rgba(29, 57, 47, 0.18);
     }
 
     .member-card {
-        border: 1px solid #e8edf3;
+        border: 1px solid var(--library-line);
         border-radius: 1rem;
-        background: #fff;
-        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.045);
+        background: var(--library-surface);
+        box-shadow: 0 6px 20px rgba(58, 46, 31, 0.045);
     }
 
     .member-stat-icon {
@@ -32,7 +32,7 @@
     }
 
     .member-stat-value {
-        color: #172b4d;
+        color: var(--library-ink);
         font-size: 1.6rem;
         font-weight: 750;
         letter-spacing: -0.04em;
@@ -41,14 +41,14 @@
 
     .member-panel {
         overflow: hidden;
-        border: 1px solid #e8edf3;
+        border: 1px solid var(--library-line);
         border-radius: 1rem;
-        background: #fff;
-        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.045);
+        background: var(--library-surface);
+        box-shadow: 0 6px 20px rgba(58, 46, 31, 0.045);
     }
 
     .member-panel-header {
-        border-bottom: 1px solid #edf1f5;
+        border-bottom: 1px solid var(--library-line);
         padding: 1.1rem 1.25rem;
     }
 </style>

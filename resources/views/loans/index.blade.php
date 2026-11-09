@@ -43,7 +43,19 @@
                     <tr>
                         <td>{{ $loan->member->name }}<br><span class="text-muted small">{{ $loan->member->library_card_number }}</span></td>
                         <td>{{ $loan->copy->book->title }}<br><code class="small">{{ $loan->copy->barcode }}</code></td>
-                        <td>{{ $loan->issued_at->format('Y-m-d') }}</td>
+                        <td>
+                            {{ $loan->issued_at->format('Y-m-d') }}
+                            @if ($loan->issue_override_reason)
+                                <details class="small mt-1">
+                                    <summary class="text-warning-emphasis">Issue override</summary>
+                                    <div class="text-muted mt-1">
+                                        {{ $loan->issue_override_reason }}<br>
+                                        By {{ $loan->issueOverrider?->name ?? 'Deleted administrator' }}
+                                        at {{ $loan->issue_overridden_at?->format('Y-m-d H:i') }}
+                                    </div>
+                                </details>
+                            @endif
+                        </td>
                         <td>{{ $loan->due_at->format('Y-m-d') }}</td>
                         <td>
                             @if ($loan->isActive())
@@ -74,11 +86,20 @@
                         </td>
                         <td>
                             @if ($loan->isActive())
-                                <form method="POST" action="{{ route('loans.return', $loan) }}" onsubmit="return confirm('Record this book as returned?')">
+                                <form method="POST" action="{{ route('loans.return', $loan) }}" class="d-flex flex-column gap-1" onsubmit="return confirm('Record this book return?')">
                                     @csrf
                                     @method('PATCH')
-                                    <button class="btn btn-sm btn-outline-success" type="submit">Return</button>
+                                    <select name="condition" class="form-select form-select-sm" aria-label="Returned condition" required>
+                                        <option value="good">Good condition</option>
+                                        <option value="damaged" @selected($loan->damage_condition_note)>Damaged</option>
+                                    </select>
+                                    <textarea name="damage_condition_note" class="form-control form-control-sm" rows="2" minlength="5" maxlength="2000" placeholder="Condition notes (required if damaged)">{{ old('damage_condition_note') }}</textarea>
+                                    <input name="damage_fee_pkr" type="number" min="0" max="1000000000" class="form-control form-control-sm" value="0" aria-label="Damage fee in PKR">
+                                    <button class="btn btn-sm btn-outline-success" type="submit">Process return</button>
                                 </form>
+                            @endif
+                            @if ($loan->damage_condition_note)
+                                <div class="small text-danger mt-1">Damage: {{ $loan->damage_condition_note }}@if ($loan->damage_fee_pkr > 0) · PKR {{ number_format($loan->damage_fee_pkr) }} charge @endif</div>
                             @endif
                             @if ($loan->fine && ! $loan->fine->isSettled())
                                 <form method="POST" action="{{ route('fines.pay', $loan->fine) }}" class="mt-1" onsubmit="return confirm('Record simulated payment of PKR {{ number_format($loan->fine->amount_pkr) }}?')">

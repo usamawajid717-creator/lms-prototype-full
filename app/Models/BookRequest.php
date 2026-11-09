@@ -18,11 +18,18 @@ class BookRequest extends Model
         'book_id',
         'decision_reason',
         'reviewed_at',
+        'supplier',
+        'ordered_at',
+        'received_at',
     ];
 
     protected function casts(): array
     {
-        return ['reviewed_at' => 'datetime'];
+        return [
+            'reviewed_at' => 'datetime',
+            'ordered_at' => 'date',
+            'received_at' => 'datetime',
+        ];
     }
 
     public function member(): BelongsTo

@@ -38,7 +38,7 @@
 <div class="card form-card border-0">
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
-            <thead class="table-light"><tr><th>Name</th><th>Description</th><th>Books</th><th>Status</th><th>Save</th></tr></thead>
+            <thead class="table-light"><tr><th>Name</th><th>Description</th><th>Books</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
                 @forelse ($categories as $category)
                     <tr>
@@ -58,7 +58,26 @@
                                 <label class="form-check-label" for="active-{{ $category->id }}">{{ $category->is_active ? 'Active' : 'Inactive' }}</label>
                             </div>
                         </td>
-                        <td><button form="category-{{ $category->id }}" class="btn btn-sm btn-outline-primary" type="submit">Save</button></td>
+                        <td>
+                            <button form="category-{{ $category->id }}" class="btn btn-sm btn-outline-primary" type="submit">Save</button>
+                            @if ($category->is_active && $mergeTargets->where('id', '!=', $category->id)->isNotEmpty())
+                                <details class="mt-2">
+                                    <summary class="small text-danger">Merge category</summary>
+                                    <form action="{{ route('catalog.categories.merge', $category) }}" method="POST" class="mt-2" onsubmit="return confirm('Move all books into the selected category and deactivate this category?')">
+                                        @csrf
+                                        @method('PATCH')
+                                        <label for="merge-target-{{ $category->id }}" class="visually-hidden">Destination category</label>
+                                        <select id="merge-target-{{ $category->id }}" name="target_category_id" class="form-select form-select-sm mb-1" required>
+                                            <option value="">Select destination</option>
+                                            @foreach ($mergeTargets->where('id', '!=', $category->id) as $target)
+                                                <option value="{{ $target->id }}">{{ $target->name }}</option>
+                                            @endforeach
+                                        </select>
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">Merge & deactivate</button>
+                                    </form>
+                                </details>
+                            @endif
+                        </td>
                     </tr>
                 @empty
                     <tr><td colspan="5" class="text-center text-muted py-4">No categories have been created.</td></tr>

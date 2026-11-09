@@ -23,17 +23,21 @@
                     <tr>
                         <td><code>{{ $copy->barcode }}</code></td>
                         <td>{{ $copy->copy_number }}</td>
-                        <td><span class="badge {{ $copy->status === 'available' ? 'text-bg-success' : (in_array($copy->status, ['on_loan', 'reserved'], true) ? 'text-bg-warning' : 'text-bg-secondary') }}">{{ ucfirst(str_replace('_', ' ', $copy->status)) }}</span></td>
+                        <td>
+                            <span class="badge {{ $copy->status === 'available' ? 'text-bg-success' : (in_array($copy->status, ['on_loan', 'reserved'], true) ? 'text-bg-warning' : ($copy->status === 'damaged' ? 'text-bg-danger' : 'text-bg-secondary')) }}">{{ ucfirst(str_replace('_', ' ', $copy->status)) }}</span>
+                            @if ($copy->condition_note)<div class="small text-muted mt-1">{{ $copy->condition_note }}</div>@endif
+                        </td>
                         <td>
                             @if (! in_array($copy->status, ['on_loan', 'reserved', 'retired'], true))
-                                <form method="POST" action="{{ route('catalog.admin.copies.update', [$book, $copy]) }}" class="d-flex gap-2">
+                                <form method="POST" action="{{ route('catalog.admin.copies.update', [$book, $copy]) }}" class="d-flex flex-column flex-md-row gap-2">
                                     @csrf
                                     @method('PATCH')
                                     <select name="status" class="form-select form-select-sm" aria-label="Status for {{ $copy->barcode }}">
-                                        @foreach (['available' => 'Available', 'unavailable' => 'Unavailable', 'lost' => 'Lost'] as $value => $label)
+                                        @foreach (['available' => 'Available', 'unavailable' => 'Unavailable', 'lost' => 'Lost', 'damaged' => 'Damaged'] as $value => $label)
                                             <option value="{{ $value }}" @selected($copy->status === $value)>{{ $label }}</option>
                                         @endforeach
                                     </select>
+                                    <input name="condition_note" class="form-control form-control-sm" value="{{ $copy->condition_note }}" minlength="5" maxlength="2000" placeholder="Required damage condition note" aria-label="Condition note for {{ $copy->barcode }}">
                                     <button class="btn btn-sm btn-outline-primary" type="submit">Save</button>
                                 </form>
                             @else

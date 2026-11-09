@@ -10,8 +10,8 @@
         border: 0;
         border-radius: 1.25rem;
         color: #fff;
-        background: linear-gradient(120deg, #163f67, #247da0);
-        box-shadow: 0 14px 34px rgba(31, 97, 141, 0.18);
+        background: linear-gradient(120deg, var(--library-forest-dark), var(--library-forest));
+        box-shadow: 0 14px 34px rgba(29, 57, 47, 0.18);
     }
 
     .dashboard-hero::after {
@@ -30,16 +30,16 @@
     .dashboard-stat {
         position: relative;
         overflow: hidden;
-        border: 1px solid #e8edf3;
+        border: 1px solid var(--library-line);
         border-radius: 1rem;
-        background: #fff;
-        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.045);
+        background: var(--library-surface);
+        box-shadow: 0 6px 20px rgba(58, 46, 31, 0.045);
         transition: transform 160ms ease, box-shadow 160ms ease;
     }
 
     .dashboard-stat:hover {
         transform: translateY(-2px);
-        box-shadow: 0 12px 26px rgba(15, 23, 42, 0.09);
+        box-shadow: 0 12px 26px rgba(58, 46, 31, 0.09);
     }
 
     .dashboard-stat-icon {
@@ -53,7 +53,7 @@
     }
 
     .dashboard-stat-value {
-        color: #172b4d;
+        color: var(--library-ink);
         font-size: clamp(1.35rem, 2vw, 1.8rem);
         font-weight: 750;
         letter-spacing: -0.04em;
@@ -62,14 +62,14 @@
 
     .dashboard-panel {
         overflow: hidden;
-        border: 1px solid #e8edf3;
+        border: 1px solid var(--library-line);
         border-radius: 1rem;
-        background: #fff;
-        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.045);
+        background: var(--library-surface);
+        box-shadow: 0 6px 20px rgba(58, 46, 31, 0.045);
     }
 
     .dashboard-panel-header {
-        border-bottom: 1px solid #edf1f5;
+        border-bottom: 1px solid var(--library-line);
         padding: 1.1rem 1.25rem;
     }
 
@@ -100,18 +100,18 @@
         align-items: flex-end;
         justify-content: center;
         border-radius: 0.45rem;
-        background: #f3f6fa;
+        background: #f1eadd;
     }
 
     .activity-bar {
         width: min(1.2rem, 70%);
         min-height: 0.25rem;
         border-radius: 0.4rem 0.4rem 0.15rem 0.15rem;
-        background: linear-gradient(180deg, #42a5c8, #1f618d);
+        background: linear-gradient(180deg, #c99d55, var(--library-terracotta));
     }
 
     .dashboard-table th {
-        color: #64748b;
+        color: var(--library-muted);
         font-size: 0.72rem;
         font-weight: 700;
         letter-spacing: 0.055em;

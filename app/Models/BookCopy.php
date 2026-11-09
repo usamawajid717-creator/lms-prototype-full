@@ -14,6 +14,7 @@ class BookCopy extends Model
         'copy_number',
         'barcode',
         'status',
+        'condition_note',
     ];
 
     public function book(): BelongsTo

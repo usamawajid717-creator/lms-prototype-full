@@ -41,6 +41,11 @@
                             <div class="form-text">Set to 0 to disable overdue fines on future returns.</div>
                         </div>
                         <div class="col-md-6">
+                            <label for="issue_fine_limit_pkr" class="form-label">Outstanding fine limit for issuing (PKR)</label>
+                            <input id="issue_fine_limit_pkr" name="issue_fine_limit_pkr" type="number" min="0" max="1000000000" class="form-control" value="{{ old('issue_fine_limit_pkr', $policy->issue_fine_limit_pkr) }}" required>
+                            <div class="form-text">Members above this unpaid balance are blocked from new loans unless an administrator records an override reason. Zero blocks any positive unpaid balance.</div>
+                        </div>
+                        <div class="col-md-6">
                             <label for="max_active_reservations" class="form-label">Maximum active reservations per member</label>
                             <input id="max_active_reservations" name="max_active_reservations" type="number" min="1" max="20" class="form-control" value="{{ old('max_active_reservations', $policy->max_active_reservations) }}" required>
                         </div>

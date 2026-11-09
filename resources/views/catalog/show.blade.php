@@ -61,6 +61,9 @@
                         <form method="POST" action="{{ route('book-reviews.store', $book) }}" class="border rounded p-3 mb-4">
                             @csrf @method('PUT')
                             <h5 class="mb-3">{{ $myReview ? 'Update your review' : 'Write a review' }}</h5>
+                            @if ($myReview?->hidden_at)
+                                <p class="small text-warning">Your review is hidden from the catalog pending moderation. You can edit or remove it.</p>
+                            @endif
                             <div class="mb-3">
                                 <label for="rating" class="form-label">Rating *</label>
                                 <select id="rating" name="rating" class="form-select" required>
@@ -80,12 +83,24 @@
                             <strong>{{ $review->member->name }}</strong>
                             <span class="text-warning" aria-label="{{ $review->rating }} out of 5 stars">{{ $review->rating }} / 5</span>
                         </div>
+                        @if ($review->hasVerifiedLoan())
+                            <span class="badge text-bg-success mt-1">Verified borrower</span>
+                        @endif
                         @if ($review->comment)<p class="mb-0 mt-2" style="white-space: pre-line">{{ $review->comment }}</p>@endif
                         <small class="text-muted">{{ $review->created_at->format('M j, Y') }}</small>
                         @if ($myReview?->id === $review->id)
                             <form method="POST" action="{{ route('book-reviews.destroy', $book) }}" class="mt-2">
                                 @csrf @method('DELETE')
                                 <button class="btn btn-sm btn-outline-danger" type="submit">Remove my review</button>
+                            </form>
+                        @elseif (auth()->check() && ! auth()->user()->isAdmin())
+                            <form method="POST" action="{{ route('book-reviews.report', $review) }}" class="mt-2">
+                                @csrf
+                                <label for="report-reason-{{ $review->id }}" class="form-label small">Report this review</label>
+                                <div class="input-group input-group-sm">
+                                    <input id="report-reason-{{ $review->id }}" name="reason" class="form-control" placeholder="Reason (at least 5 characters)" minlength="5" maxlength="1000" required>
+                                    <button class="btn btn-outline-secondary" type="submit">Report</button>
+                                </div>
                             </form>
                         @endif
                     </article>

@@ -42,7 +42,7 @@ class BookRequestController extends Controller
             ->where($matchesBook)
             ->exists();
         $duplicate = BookRequest::query()
-            ->whereIn('status', ['pending', 'approved'])
+            ->whereIn('status', ['pending', 'approved', 'ordered', 'received'])
             ->where($matchesBook)
             ->exists();
 
@@ -73,8 +73,10 @@ class BookRequestController extends Controller
     public function update(Request $request, BookRequest $bookRequest): RedirectResponse
     {
         $validated = $request->validate([
-            'status' => ['required', Rule::in(['approved', 'declined', 'fulfilled'])],
+            'status' => ['required', Rule::in(['approved', 'declined', 'ordered', 'received', 'fulfilled'])],
             'reason' => ['nullable', 'string', 'min:5', 'max:2000'],
+            'supplier' => ['required_if:status,ordered', 'nullable', 'string', 'max:255'],
+            'ordered_at' => ['required_if:status,ordered', 'nullable', 'date', 'before_or_equal:today'],
             'book_id' => ['required_if:status,fulfilled', 'nullable', 'integer', Rule::exists('books', 'id')],
         ]);
 
@@ -86,7 +88,9 @@ class BookRequestController extends Controller
             $lockedRequest = BookRequest::query()->lockForUpdate()->findOrFail($bookRequest->id);
             $allowed = match ($validated['status']) {
                 'approved', 'declined' => $lockedRequest->status === 'pending',
-                'fulfilled' => $lockedRequest->status === 'approved',
+                'ordered' => $lockedRequest->status === 'approved',
+                'received' => $lockedRequest->status === 'ordered',
+                'fulfilled' => $lockedRequest->status === 'received',
             };
 
             if (! $allowed) {
@@ -101,22 +105,29 @@ class BookRequestController extends Controller
                 'book_id' => $validated['status'] === 'fulfilled' ? $validated['book_id'] : null,
                 'decision_reason' => $validated['status'] === 'declined' ? trim($validated['reason']) : null,
                 'reviewed_at' => now(),
+                'supplier' => $validated['status'] === 'ordered' ? trim($validated['supplier']) : $lockedRequest->supplier,
+                'ordered_at' => $validated['status'] === 'ordered' ? $validated['ordered_at'] : $lockedRequest->ordered_at,
+                'received_at' => $validated['status'] === 'received' ? now() : $lockedRequest->received_at,
             ]);
         });
 
         $updatedRequest = $bookRequest->fresh(['book', 'member']);
-        $title = match ($updatedRequest->status) {
+        $notification = match ($updatedRequest->status) {
             'approved' => 'Book request approved',
             'declined' => 'Book request declined',
+            'ordered' => 'Requested book ordered',
+            'received' => 'Requested book received',
             'fulfilled' => 'Book request fulfilled',
         };
         $message = match ($updatedRequest->status) {
             'approved' => 'Your request for "'.$updatedRequest->title.'" was approved. We will update you when the book is acquired.',
             'declined' => 'Your request for "'.$updatedRequest->title.'" was declined. Reason: '.$updatedRequest->decision_reason,
+            'ordered' => 'The library ordered "'.$updatedRequest->title.'" from '.$updatedRequest->supplier.' on '.$updatedRequest->ordered_at->format('M j, Y').'.',
+            'received' => 'Your requested book "'.$updatedRequest->title.'" has arrived at the library.',
             'fulfilled' => 'The requested book "'.$updatedRequest->book->title.'" has been added to the catalog.',
         };
         $updatedRequest->member->notify(new LibraryNotification(
-            $title,
+            $notification,
             $message,
             route('book-requests.mine'),
         ));

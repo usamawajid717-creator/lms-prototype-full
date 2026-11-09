@@ -8,7 +8,7 @@
         <div class="card form-card border-0">
             <div class="card-header text-white"><h4 class="mb-0">Issue a Book</h4></div>
             <div class="card-body p-4">
-                <p class="text-muted">Enter the member's library card and the available copy's barcode. The loan period is 14 days.</p>
+                <p class="text-muted">Enter the member's library card and the available copy's barcode. The loan period is {{ $policy->loan_period_days }} days. Members with overdue loans or unpaid fines above the configured limit require an administrator override reason.</p>
                 @if ($errors->any())
                     <div class="alert alert-danger"><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
                 @endif
@@ -23,6 +23,11 @@
                         <label for="barcode" class="form-label">Book-copy barcode</label>
                         <input id="barcode" name="barcode" class="form-control" value="{{ old('barcode') }}" required>
                         @error('barcode')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="mb-4">
+                        <label for="override_reason" class="form-label">Override reason <span class="text-muted">(required only when an eligibility block applies)</span></label>
+                        <textarea id="override_reason" name="override_reason" class="form-control" rows="3" maxlength="2000" minlength="10">{{ old('override_reason') }}</textarea>
+                        @error('override_reason')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                     </div>
                     <div class="d-flex gap-2">
                         <button class="btn btn-primary btn-submit text-white" type="submit">Issue Book</button>

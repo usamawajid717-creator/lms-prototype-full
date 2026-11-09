@@ -36,8 +36,10 @@
         <h4 class="fw-bold mb-3">My Requests</h4>
         @forelse ($requests as $item)
             <div class="card form-card border-0 mb-3"><div class="card-body">
-                <div class="d-flex justify-content-between gap-2"><h5 class="mb-1">{{ $item->title }}</h5><span class="badge text-bg-{{ ['pending' => 'warning', 'approved' => 'primary', 'declined' => 'danger', 'fulfilled' => 'success'][$item->status] }}">{{ ucfirst($item->status) }}</span></div>
+                <div class="d-flex justify-content-between gap-2"><h5 class="mb-1">{{ $item->title }}</h5><span class="badge text-bg-{{ ['pending' => 'warning', 'approved' => 'primary', 'ordered' => 'info', 'received' => 'success', 'declined' => 'danger', 'fulfilled' => 'success'][$item->status] }}">{{ ucfirst($item->status) }}</span></div>
                 <div class="text-muted small">{{ $item->authors ?: 'Author not specified' }}@if ($item->isbn) · ISBN {{ $item->isbn }}@endif</div>
+                @if ($item->supplier)<p class="mt-2 mb-0">Ordered from {{ $item->supplier }}@if ($item->ordered_at) on {{ $item->ordered_at->format('M j, Y') }}@endif</p>@endif
+                @if ($item->received_at)<p class="mt-1 mb-0 text-success">Received by the library {{ $item->received_at->format('M j, Y') }}. Catalog processing is in progress.</p>@endif
                 @if ($item->decision_reason)<p class="mt-2 mb-0"><strong>Admin note:</strong> {{ $item->decision_reason }}</p>@endif
                 @if ($item->book)<p class="mt-2 mb-0">Added to the catalog: <a href="{{ route('catalog.show', $item->book) }}">{{ $item->book->title }}</a></p>@endif
             </div></div>

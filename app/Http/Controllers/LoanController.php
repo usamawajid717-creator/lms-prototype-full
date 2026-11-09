@@ -27,7 +27,7 @@ class LoanController extends Controller
         ]);
 
         $loans = Loan::query()
-            ->with(['member', 'copy.book', 'fine.adjustments.admin'])
+            ->with(['member', 'copy.book', 'fine.adjustments.admin', 'issueOverrider'])
             ->when($request->input('status') === 'active', fn ($query) => $query->whereNull('returned_at'))
             ->when($request->input('status') === 'returned', fn ($query) => $query->whereNotNull('returned_at'))
             ->when($request->filled('search'), function ($query) use ($request) {
@@ -49,7 +49,7 @@ class LoanController extends Controller
 
     public function create(): View
     {
-        return view('loans.create');
+        return view('loans.create', ['policy' => LibraryPolicy::current()]);
     }
 
     public function store(Request $request, ReservationService $reservations): RedirectResponse
@@ -61,6 +61,7 @@ class LoanController extends Controller
                 Rule::exists('users', 'library_card_number')->where('role', 'member'),
             ],
             'barcode' => ['required', 'string', Rule::exists('book_copies', 'barcode')],
+            'override_reason' => ['nullable', 'string', 'min:10', 'max:2000'],
         ]);
 
         $reservations->expireHolds();
@@ -104,6 +105,35 @@ class LoanController extends Controller
                 ]);
             }
 
+            $hasOverdueLoans = $member->loans()
+                ->whereNull('returned_at')
+                ->whereDate('due_at', '<', today())
+                ->exists();
+            $outstandingFines = $member->fines()
+                ->whereNull('paid_at')
+                ->whereNull('waived_at')
+                ->where('amount_pkr', '>', 0)
+                ->sum('amount_pkr');
+            $hasExcessiveFines = $outstandingFines > $policy->issue_fine_limit_pkr;
+            $requiresOverride = $hasOverdueLoans || $hasExcessiveFines;
+            $overrideReason = trim((string) ($validated['override_reason'] ?? ''));
+
+            if ($requiresOverride && $overrideReason === '') {
+                $blocks = [];
+                if ($hasOverdueLoans) {
+                    $blocks[] = 'one or more overdue loans';
+                }
+                if ($hasExcessiveFines) {
+                    $blocks[] = 'an outstanding fine balance of PKR '.number_format($outstandingFines)
+                        .' above the PKR '.number_format($policy->issue_fine_limit_pkr).' limit';
+                }
+
+                throw ValidationException::withMessages([
+                    'member_card' => 'Issuing is blocked because the member has '.implode(' and ', $blocks).'. An administrator may override this block with a reason.',
+                    'override_reason' => 'Enter a justification to override this issue block.',
+                ]);
+            }
+
             $wasAvailable = $copy->status === 'available';
             $copy->update(['status' => 'on_loan']);
             if ($wasAvailable) {
@@ -117,6 +147,9 @@ class LoanController extends Controller
                 'issued_at' => today(),
                 'due_at' => today()->addDays($policy->loan_period_days),
                 'reservation_id' => $reservation?->id,
+                'issue_override_reason' => $requiresOverride ? $overrideReason : null,
+                'issue_overridden_by' => $requiresOverride ? $request->user()->id : null,
+                'issue_overridden_at' => $requiresOverride ? now() : null,
             ]);
 
             if ($reservation) {
@@ -134,7 +167,13 @@ class LoanController extends Controller
 
     public function return(Loan $loan, Request $request, ReservationService $reservations): RedirectResponse
     {
-        DB::transaction(function () use ($loan, $request, $reservations): void {
+        $validated = $request->validate([
+            'condition' => ['nullable', Rule::in(['good', 'damaged'])],
+            'damage_condition_note' => ['required_if:condition,damaged', 'nullable', 'string', 'min:5', 'max:2000'],
+            'damage_fee_pkr' => ['required_if:condition,damaged', 'nullable', 'integer', 'between:0,1000000000'],
+        ]);
+
+        DB::transaction(function () use ($loan, $request, $reservations, $validated): void {
             $lockedLoan = Loan::query()->lockForUpdate()->findOrFail($loan->id);
 
             if (! $lockedLoan->isActive()) {
@@ -150,31 +189,51 @@ class LoanController extends Controller
             }
 
             $returnedAt = now();
+            $isDamaged = ($validated['condition'] ?? 'good') === 'damaged';
             $lockedLoan->update([
                 'returned_at' => $returnedAt,
                 'returned_by' => $request->user()->id,
+                'damage_fee_pkr' => $isDamaged ? (int) $validated['damage_fee_pkr'] : 0,
+                'damage_condition_note' => $isDamaged ? $validated['damage_condition_note'] : null,
             ]);
-            $copy->update(['status' => 'available']);
-            $book->increment('available_copies');
-            $reservations->allocateNext($book, $copy);
+            $copy->update([
+                'status' => $isDamaged ? 'damaged' : 'available',
+                'condition_note' => $isDamaged ? $validated['damage_condition_note'] : null,
+            ]);
+            if (! $isDamaged) {
+                $book->increment('available_copies');
+                $reservations->allocateNext($book, $copy);
+            }
 
+            $overdueFine = 0;
             if ($returnedAt->toDateString() > $lockedLoan->due_at->toDateString()) {
                 $daysOverdue = $lockedLoan->due_at->diffInDays($returnedAt->toDateString());
-                $fine = $lockedLoan->fine()->create([
-                    'amount_pkr' => $daysOverdue * LibraryPolicy::current()->fine_per_day_pkr,
-                ]);
+                $overdueFine = $daysOverdue * LibraryPolicy::current()->fine_per_day_pkr;
+            }
+
+            $totalCharge = $overdueFine + ($isDamaged ? (int) $validated['damage_fee_pkr'] : 0);
+            if ($totalCharge > 0) {
+                $fine = $lockedLoan->fine()->create(['amount_pkr' => $totalCharge]);
+                $charges = [];
+                if ($overdueFine > 0) {
+                    $charges[] = 'an overdue fine of PKR '.number_format($overdueFine);
+                }
+                if ($isDamaged && (int) $validated['damage_fee_pkr'] > 0) {
+                    $charges[] = 'a damage fee of PKR '.number_format((int) $validated['damage_fee_pkr']);
+                }
                 $lockedLoan->member->notify(new LibraryNotification(
-                    'Overdue fine assessed',
-                    'A fine of PKR '.number_format($fine->amount_pkr).' was assessed for "'.$lockedLoan->copy->book->title.'". Please contact library staff to record payment.',
+                    'Loan charges assessed',
+                    'A total charge of PKR '.number_format($fine->amount_pkr).' ('.implode(' and ', $charges).') was assessed for "'.$lockedLoan->copy->book->title.'". Please contact library staff to record payment.',
                     route('loans.mine'),
                 ));
             }
         });
 
         $fine = $loan->fresh()->fine;
-        $message = $fine
-            ? 'Book returned. An overdue fine of PKR '.number_format($fine->amount_pkr).' was assessed.'
-            : 'Book returned successfully.';
+        $message = 'Book returned'.($loan->fresh()->copy->status === 'damaged' ? ' and marked damaged' : '').'.';
+        if ($fine) {
+            $message .= ' Total fine/charges assessed: PKR '.number_format($fine->amount_pkr).'.';
+        }
 
         return redirect()->route('loans.index')->with('status', $message);
     }
@@ -186,13 +245,14 @@ class LoanController extends Controller
             ->orderByRaw('returned_at IS NULL DESC')
             ->orderByDesc('issued_at')
             ->paginate(15);
+        $policy = LibraryPolicy::current();
         $hasUnpaidFines = $request->user()->fines()
             ->whereNull('paid_at')
             ->whereNull('waived_at')
             ->where('amount_pkr', '>', 0)
             ->exists();
 
-        return view('loans.mine', compact('loans', 'hasUnpaidFines'));
+        return view('loans.mine', compact('loans', 'hasUnpaidFines', 'policy'));
     }
 
     public function renew(Loan $loan, Request $request): RedirectResponse

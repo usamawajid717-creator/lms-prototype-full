@@ -3,12 +3,16 @@
 @section('title', 'Library Catalog')
 
 @section('content')
-<div class="mb-4">
-    <h4 class="fw-bold text-dark mb-1">Library Catalog</h4>
-    <p class="text-muted mb-0">Search and browse books by title, author, ISBN, or publisher.</p>
-</div>
+<section class="catalog-hero mb-4">
+    <div class="catalog-hero-mark" aria-hidden="true"><i class="bi bi-book-half"></i></div>
+    <div>
+        <div class="catalog-eyebrow">Find your next read</div>
+        <h1 class="h2 fw-bold mb-2">The Library Catalog</h1>
+        <p class="mb-0">Explore the collection by title, author, ISBN, or publisher.</p>
+    </div>
+</section>
 
-<div class="card form-card border-0 mb-4">
+<div class="card form-card catalog-search-card border-0 mb-4">
     <div class="card-body">
         <form id="catalog-search-form" action="{{ route('catalog.index') }}" method="GET" class="row g-3 align-items-end">
             <div class="col-lg-5 col-md-6">
@@ -51,20 +55,24 @@
 </div>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <span class="small text-muted" id="catalog-result-count" aria-live="polite">{{ $books->total() }} {{ \Illuminate\Support\Str::plural('book', $books->total()) }} found</span>
+    <span class="small text-muted catalog-result-count" id="catalog-result-count" aria-live="polite">{{ $books->total() }} {{ \Illuminate\Support\Str::plural('book', $books->total()) }} in the collection</span>
     <span class="small text-primary d-none" id="catalog-search-status" role="status"><span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Updating results...</span>
 </div>
 
 <div id="catalog-results" class="row g-3">
     @forelse ($books as $book)
         <div class="col-lg-4 col-md-6">
-            <div class="card form-card border-0 h-100">
-                @if ($book->cover_image_path)
-                    <img src="{{ Storage::disk('public')->url($book->cover_image_path) }}" alt="Cover of {{ $book->title }}" class="card-img-top" style="height: 220px; object-fit: contain; background: #f8f9fa;">
-                @endif
+            <div class="card form-card catalog-book-card border-0 h-100">
+                <a href="{{ route('catalog.show', $book) }}" class="catalog-book-cover text-decoration-none" aria-label="View {{ $book->title }}">
+                    @if ($book->cover_image_path)
+                        <img src="{{ Storage::disk('public')->url($book->cover_image_path) }}" alt="Cover of {{ $book->title }}">
+                    @else
+                        <span class="catalog-book-cover-placeholder"><i class="bi bi-book-half"></i></span>
+                    @endif
+                </a>
                 <div class="card-body d-flex flex-column">
                     <span class="badge text-bg-light align-self-start mb-2">{{ $book->category->name }}</span>
-                    <h5 class="fw-bold mb-1">{{ $book->title }}</h5>
+                    <h2 class="h5 fw-bold mb-1"><a href="{{ route('catalog.show', $book) }}" class="catalog-book-title text-decoration-none">{{ $book->title }}</a></h2>
                     <p class="text-muted mb-3">by {{ $book->authors }}</p>
                     <div class="small text-muted mb-3">
                         <div>ISBN: {{ $book->isbn }}</div>
@@ -79,7 +87,7 @@
                         <span class="badge {{ $book->hasAvailableCopies() ? 'text-bg-success' : 'text-bg-secondary' }}">
                             {{ $book->available_copies }} of {{ $book->total_copies }} available
                         </span>
-                        <a href="{{ route('catalog.show', $book) }}" class="btn btn-sm btn-outline-primary">Details</a>
+                        <a href="{{ route('catalog.show', $book) }}" class="btn btn-sm btn-outline-primary">Explore book</a>
                     </div>
                 </div>
             </div>

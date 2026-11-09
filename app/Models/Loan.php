@@ -19,6 +19,11 @@ class Loan extends Model
         'returned_at',
         'renewal_count',
         'reservation_id',
+        'issue_override_reason',
+        'issue_overridden_by',
+        'issue_overridden_at',
+        'damage_fee_pkr',
+        'damage_condition_note',
     ];
 
     protected function casts(): array
@@ -28,6 +33,8 @@ class Loan extends Model
             'due_at' => 'date',
             'returned_at' => 'datetime',
             'renewal_count' => 'integer',
+            'issue_overridden_at' => 'datetime',
+            'damage_fee_pkr' => 'integer',
         ];
     }
 
@@ -44,6 +51,11 @@ class Loan extends Model
     public function issuer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'issued_by');
+    }
+
+    public function issueOverrider(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'issue_overridden_by');
     }
 
     public function fine(): HasOne

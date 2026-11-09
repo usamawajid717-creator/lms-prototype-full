@@ -36,6 +36,21 @@ class BookRequestTest extends TestCase
 
         $this->assertSame('approved', $request->fresh()->status);
         $this->patch(route('book-requests.update', $request), [
+            'status' => 'ordered',
+            'supplier' => 'Campus Books Ltd.',
+            'ordered_at' => today()->toDateString(),
+        ])->assertRedirect(route('book-requests.admin'));
+        $this->assertDatabaseHas('book_requests', [
+            'id' => $request->id,
+            'status' => 'ordered',
+            'supplier' => 'Campus Books Ltd.',
+        ]);
+        $this->assertSame(today()->toDateString(), $request->fresh()->ordered_at->toDateString());
+        $this->patch(route('book-requests.update', $request), [
+            'status' => 'received',
+        ])->assertRedirect(route('book-requests.admin'));
+        $this->assertNotNull($request->fresh()->received_at);
+        $this->patch(route('book-requests.update', $request), [
             'status' => 'fulfilled',
             'book_id' => $book->id,
         ])->assertRedirect(route('book-requests.admin'));
@@ -120,6 +135,27 @@ class BookRequestTest extends TestCase
         $this->assertSame('pending', $request->fresh()->status);
     }
 
+    public function test_ordering_requires_supplier_and_date_and_stages_cannot_be_skipped(): void
+    {
+        $member = User::factory()->create(['role' => 'member']);
+        $admin = User::factory()->create(['role' => 'admin']);
+        $request = BookRequest::create([
+            'user_id' => $member->id,
+            'title' => 'Order Workflow Book',
+            'status' => 'approved',
+        ]);
+
+        $this->actingAs($admin)->patch(route('book-requests.update', $request), [
+            'status' => 'ordered',
+        ])->assertSessionHasErrors(['supplier', 'ordered_at']);
+        $this->assertSame('approved', $request->fresh()->status);
+
+        $this->patch(route('book-requests.update', $request), [
+            'status' => 'received',
+        ])->assertSessionHasErrors('status');
+        $this->assertSame('approved', $request->fresh()->status);
+    }
+
     public function test_admin_can_view_requests_and_member_can_view_request_form(): void
     {
         $member = User::factory()->create(['role' => 'member']);
@@ -185,6 +221,19 @@ class BookRequestTest extends TestCase
         });
 
         $this->patch(route('book-requests.update', $approvedRequest), [
+            'status' => 'ordered',
+            'supplier' => 'Campus Books Ltd.',
+            'ordered_at' => today()->toDateString(),
+        ])->assertRedirect(route('book-requests.admin'));
+        $this->patch(route('book-requests.update', $approvedRequest), [
+            'status' => 'received',
+        ])->assertRedirect(route('book-requests.admin'));
+        Notification::assertSentTo($member, LibraryNotification::class, function (LibraryNotification $notification): bool {
+            return $notification->toArray(new \stdClass)['title'] === 'Requested book received'
+                && str_contains($notification->toArray(new \stdClass)['message'], 'Approved Request');
+        });
+
+        $this->patch(route('book-requests.update', $approvedRequest), [
             'status' => 'fulfilled',
             'book_id' => $book->id,
         ])->assertRedirect(route('book-requests.admin'));
@@ -202,7 +251,7 @@ class BookRequestTest extends TestCase
                 && str_contains($notification->toArray(new \stdClass)['message'], 'Outside current collection scope.');
         });
 
-        Notification::assertSentToTimes($member, LibraryNotification::class, 3);
+        Notification::assertSentToTimes($member, LibraryNotification::class, 5);
     }
 
     private function createBook(): Book

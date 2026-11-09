@@ -5,7 +5,7 @@
 @section('content')
 <div class="mb-4">
     <h4 class="fw-bold text-dark mb-1">My Loans</h4>
-    <p class="text-muted mb-0">View current and past loans. Eligible active loans may be renewed once for 14 days.</p>
+    <p class="text-muted mb-0">View current and past loans. Eligible active loans may be renewed up to {{ $policy->max_renewals }} times for {{ $policy->loan_period_days }} days each time.</p>
 </div>
 
 @if (session('status'))<div class="alert alert-success">{{ session('status') }}</div>@endif
@@ -35,19 +35,22 @@
                             @if ($loan->fine)
                                 PKR {{ number_format($loan->fine->amount_pkr) }}<br>
                                 <span class="badge {{ $loan->fine->isSettled() ? 'text-bg-success' : 'text-bg-danger' }}">{{ $loan->fine->waived_at ? 'Waived' : ($loan->fine->paid_at ? 'Paid' : 'Unpaid') }}</span>
+                                @if ($loan->damage_fee_pkr > 0)
+                                    <div class="small text-muted">Includes damage charge: PKR {{ number_format($loan->damage_fee_pkr) }}</div>
+                                @endif
                             @else
                                 <span class="text-muted">—</span>
                             @endif
                         </td>
                         <td>
-                            @if ($loan->isActive() && $loan->renewal_count < 1 && ! $loan->due_at->isBefore(today()) && ! $hasUnpaidFines)
+                            @if ($loan->isActive() && $loan->renewal_count < $policy->max_renewals && ! $loan->due_at->isBefore(today()) && ! $hasUnpaidFines)
                                 <form method="POST" action="{{ route('loans.renew', $loan) }}">
                                     @csrf
                                     @method('PATCH')
-                                    <button class="btn btn-sm btn-outline-primary" type="submit">Renew 14 days</button>
+                                    <button class="btn btn-sm btn-outline-primary" type="submit">Renew {{ $policy->loan_period_days }} days</button>
                                 </form>
-                            @elseif ($loan->renewal_count > 0)
-                                <span class="text-muted">Already renewed</span>
+                            @elseif ($loan->renewal_count >= $policy->max_renewals)
+                                <span class="text-muted">Renewal limit reached</span>
                             @else
                                 <span class="text-muted">Not eligible</span>
                             @endif

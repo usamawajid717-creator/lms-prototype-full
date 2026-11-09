@@ -6,6 +6,8 @@ use App\Models\Book;
 use App\Models\BookCategory;
 use App\Models\BookCopy;
 use App\Models\Loan;
+use App\Models\LibraryPolicy;
+use App\Models\Fine;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -42,6 +44,7 @@ class LoanManagementTest extends TestCase
         $this->actingAs($admin)->post(route('loans.store'), [
             'member_card' => $member->library_card_number,
             'barcode' => $copy->barcode,
+            'override_reason' => 'Attempting to bypass membership.',
         ])->assertSessionHasErrors('member_card');
         $this->assertDatabaseCount('loans', 0);
 
@@ -60,8 +63,78 @@ class LoanManagementTest extends TestCase
         $this->actingAs($admin)->post(route('loans.store'), [
             'member_card' => $member->library_card_number,
             'barcode' => $copy->barcode,
+            'override_reason' => 'Attempting to bypass copy availability.',
         ])->assertSessionHasErrors('barcode');
         $this->assertDatabaseCount('loans', 0);
+    }
+
+    public function test_member_with_an_overdue_active_loan_cannot_be_issued_another_book_without_override(): void
+    {
+        [, , $overdueLoan, $member] = $this->issueLoan();
+        $overdueLoan->update(['due_at' => today()->subDay()]);
+        [, $newCopy] = $this->createBook();
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->post(route('loans.store'), [
+            'member_card' => $member->library_card_number,
+            'barcode' => $newCopy->barcode,
+        ])->assertSessionHasErrors(['member_card', 'override_reason']);
+
+        $this->assertDatabaseCount('loans', 1);
+        $this->assertDatabaseHas('book_copies', ['id' => $newCopy->id, 'status' => 'available']);
+    }
+
+    public function test_unpaid_fine_balance_above_configured_limit_blocks_issue_but_limit_is_inclusive(): void
+    {
+        LibraryPolicy::current()->update(['issue_fine_limit_pkr' => 100]);
+        [, , $loan, $member] = $this->issueLoan();
+        Fine::create(['loan_id' => $loan->id, 'amount_pkr' => 100]);
+        [, $copyAtLimit] = $this->createBook();
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->post(route('loans.store'), [
+            'member_card' => $member->library_card_number,
+            'barcode' => $copyAtLimit->barcode,
+        ])->assertRedirect(route('loans.index'));
+
+        $loan->fine()->update(['amount_pkr' => 101]);
+        [, $copyAboveLimit] = $this->createBook();
+        $this->post(route('loans.store'), [
+            'member_card' => $member->library_card_number,
+            'barcode' => $copyAboveLimit->barcode,
+        ])->assertSessionHasErrors(['member_card', 'override_reason']);
+
+        $this->assertDatabaseCount('loans', 2);
+        $this->assertDatabaseHas('book_copies', ['id' => $copyAboveLimit->id, 'status' => 'available']);
+    }
+
+    public function test_admin_can_override_issue_blocks_with_audited_reason_but_not_omit_the_reason(): void
+    {
+        LibraryPolicy::current()->update(['issue_fine_limit_pkr' => 100]);
+        [, , $overdueLoan, $member] = $this->issueLoan();
+        $overdueLoan->update(['due_at' => today()->subDay()]);
+        Fine::create(['loan_id' => $overdueLoan->id, 'amount_pkr' => 150]);
+        [, $copy] = $this->createBook();
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->post(route('loans.store'), [
+            'member_card' => $member->library_card_number,
+            'barcode' => $copy->barcode,
+        ])->assertSessionHasErrors(['member_card', 'override_reason']);
+        $this->assertDatabaseCount('loans', 1);
+
+        $reason = 'Supervisor approved a one-time exception.';
+        $this->post(route('loans.store'), [
+            'member_card' => $member->library_card_number,
+            'barcode' => $copy->barcode,
+            'override_reason' => $reason,
+        ])->assertRedirect(route('loans.index'));
+
+        $overrideLoan = Loan::query()->where('book_copy_id', $copy->id)->firstOrFail();
+        $this->assertSame($reason, $overrideLoan->issue_override_reason);
+        $this->assertSame($admin->id, $overrideLoan->issue_overridden_by);
+        $this->assertNotNull($overrideLoan->issue_overridden_at);
+        $this->get(route('loans.index'))->assertOk()->assertSee($reason);
     }
 
     public function test_admin_return_restores_copy_availability(): void
@@ -77,6 +150,55 @@ class LoanManagementTest extends TestCase
         $this->assertDatabaseHas('books', ['id' => $book->id, 'available_copies' => 1]);
     }
 
+    public function test_admin_can_return_a_damaged_copy_with_condition_and_damage_charge(): void
+    {
+        [$book, $copy, $loan] = $this->issueLoan();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $reason = 'Front cover torn and several pages stained.';
+
+        $this->actingAs($admin)->patch(route('loans.return', $loan), [
+            'condition' => 'damaged',
+            'damage_condition_note' => $reason,
+            'damage_fee_pkr' => 250,
+        ])->assertRedirect(route('loans.index'))
+            ->assertSessionHas('status', 'Book returned and marked damaged. Total fine/charges assessed: PKR 250.');
+
+        $this->assertDatabaseHas('book_copies', [
+            'id' => $copy->id,
+            'status' => 'damaged',
+            'condition_note' => $reason,
+        ]);
+        $this->assertDatabaseHas('loans', [
+            'id' => $loan->id,
+            'damage_fee_pkr' => 250,
+            'damage_condition_note' => $reason,
+        ]);
+        $this->assertDatabaseHas('fines', ['loan_id' => $loan->id, 'amount_pkr' => 250]);
+        $this->assertDatabaseHas('books', ['id' => $book->id, 'available_copies' => 0]);
+    }
+
+    public function test_damaged_return_requires_condition_note_and_combines_overdue_and_damage_charges(): void
+    {
+        [, $copy, $loan] = $this->issueLoan();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $loan->update(['due_at' => today()->subDays(2)]);
+
+        $this->actingAs($admin)->patch(route('loans.return', $loan), [
+            'condition' => 'damaged',
+            'damage_fee_pkr' => 100,
+        ])->assertSessionHasErrors('damage_condition_note');
+        $this->assertTrue($loan->fresh()->isActive());
+
+        $this->patch(route('loans.return', $loan), [
+            'condition' => 'damaged',
+            'damage_condition_note' => 'Spine detached.',
+            'damage_fee_pkr' => 100,
+        ])->assertRedirect(route('loans.index'));
+
+        $this->assertDatabaseHas('fines', ['loan_id' => $loan->id, 'amount_pkr' => 200]);
+        $this->assertDatabaseHas('book_copies', ['id' => $copy->id, 'status' => 'damaged']);
+    }
+
     public function test_returning_an_overdue_book_assesses_fifty_pkr_per_day_without_a_cap(): void
     {
         [, , $loan] = $this->issueLoan();
@@ -85,7 +207,7 @@ class LoanManagementTest extends TestCase
 
         $this->actingAs($admin)->patch(route('loans.return', $loan))
             ->assertRedirect(route('loans.index'))
-            ->assertSessionHas('status', 'Book returned. An overdue fine of PKR 2,050 was assessed.');
+            ->assertSessionHas('status', 'Book returned. Total fine/charges assessed: PKR 2,050.');
 
         $this->assertDatabaseHas('fines', [
             'loan_id' => $loan->id,
@@ -110,6 +232,7 @@ class LoanManagementTest extends TestCase
 
     public function test_unpaid_fine_blocks_renewal_until_admin_records_payment(): void
     {
+        LibraryPolicy::current()->update(['issue_fine_limit_pkr' => 1000]);
         [, , $overdueLoan, $member] = $this->issueLoan();
         $admin = User::factory()->create(['role' => 'admin']);
         $this->travel(18)->days();
@@ -160,7 +283,7 @@ class LoanManagementTest extends TestCase
         $this->assertSame($paidAt->toDateTimeString(), $fine->fresh()->paid_at->toDateTimeString());
     }
 
-    public function test_member_can_renew_own_active_loan_only_once(): void
+    public function test_member_can_renew_own_active_loan_twice_by_default(): void
     {
         [, , $loan, $member] = $this->issueLoan();
         $originalDueDate = $loan->due_at->toDateString();
@@ -173,10 +296,14 @@ class LoanManagementTest extends TestCase
         $loan->refresh();
         $this->assertSame(1, $loan->renewal_count);
         $this->assertSame(now()->parse($originalDueDate)->addDays(14)->toDateString(), $loan->due_at->toDateString());
+        $this->get(route('loans.mine'))->assertSee('Renew 14 days');
 
         $this->actingAs($member)->patch(route('loans.renew', $loan))
-            ->assertSessionHasErrors('loan');
-        $this->assertSame(1, $loan->fresh()->renewal_count);
+            ->assertRedirect(route('loans.mine'));
+        $this->assertSame(2, $loan->fresh()->renewal_count);
+
+        $this->patch(route('loans.renew', $loan))->assertSessionHasErrors('loan');
+        $this->assertSame(2, $loan->fresh()->renewal_count);
     }
 
     public function test_member_cannot_renew_another_members_loan(): void
@@ -213,6 +340,33 @@ class LoanManagementTest extends TestCase
         $this->assertDatabaseHas('books', ['id' => $book->id, 'available_copies' => 1]);
     }
 
+    public function test_admin_can_mark_a_copy_damaged_with_a_condition_note_and_restore_its_availability_later(): void
+    {
+        [$book, $copy] = $this->createBook();
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->patch(route('catalog.admin.copies.update', [$book, $copy]), [
+            'status' => 'damaged',
+        ])->assertSessionHasErrors('condition_note');
+        $this->assertDatabaseHas('books', ['id' => $book->id, 'available_copies' => 1]);
+
+        $this->patch(route('catalog.admin.copies.update', [$book, $copy]), [
+            'status' => 'damaged',
+            'condition_note' => 'Water damage on the cover.',
+        ])->assertRedirect();
+        $this->assertDatabaseHas('book_copies', [
+            'id' => $copy->id,
+            'status' => 'damaged',
+            'condition_note' => 'Water damage on the cover.',
+        ]);
+        $this->assertDatabaseHas('books', ['id' => $book->id, 'available_copies' => 0]);
+
+        $this->patch(route('catalog.admin.copies.update', [$book, $copy]), [
+            'status' => 'available',
+        ])->assertRedirect();
+        $this->assertDatabaseHas('books', ['id' => $book->id, 'available_copies' => 1]);
+    }
+
     public function test_member_cannot_exceed_five_active_loans(): void
     {
         [, $firstCopy] = $this->createBook(6);
@@ -230,6 +384,7 @@ class LoanManagementTest extends TestCase
         $this->actingAs($admin)->post(route('loans.store'), [
             'member_card' => $member->library_card_number,
             'barcode' => $copies->last()->barcode,
+            'override_reason' => 'Attempting to bypass the active loan quota.',
         ])->assertSessionHasErrors('member_card');
 
         $this->assertDatabaseCount('loans', 5);

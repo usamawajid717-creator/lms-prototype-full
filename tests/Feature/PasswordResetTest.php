@@ -13,6 +13,19 @@ class PasswordResetTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_login_and_password_reset_pages_do_not_show_application_navigation(): void
+    {
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertDontSee('appSidebar')
+            ->assertDontSee('mobile-topbar')
+            ->assertDontSee('app-topbar');
+
+        $this->get(route('password.request'))
+            ->assertOk()
+            ->assertDontSee('appSidebar');
+    }
+
     public function test_user_can_request_a_reset_link_and_reset_password_once(): void
     {
         Notification::fake();

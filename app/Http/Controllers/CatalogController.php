@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Illuminate\Http\Client\ConnectionException;
 use App\Services\ReservationService;
@@ -165,8 +166,11 @@ class CatalogController extends Controller
             ->whereIn('status', ['waiting', 'ready'])
             ->exists() ?? false;
 
+        $book->load('category');
+        $book->setRelation('reviews', $book->reviews()->whereNull('hidden_at')->with('member')->latest()->get());
+
         return view('catalog.show', [
-            'book' => $book->load(['category', 'reviews.member']),
+            'book' => $book,
             'activeReservation' => $activeReservation,
             'myReview' => $request->user()?->bookReviews()->where('book_id', $book->id)->first(),
         ]);
@@ -208,7 +212,7 @@ class CatalogController extends Controller
     {
         $categories = BookCategory::query()
             ->where('is_active', true)
-            ->orWhereKey($book->category_id)
+            ->orWhere('id', $book->category_id)
             ->orderBy('name')
             ->get();
 
@@ -282,12 +286,16 @@ class CatalogController extends Controller
         $removalError = $book->getConnection()->transaction(function () use ($book) {
             $lockedBook = Book::query()->lockForUpdate()->findOrFail($book->id);
 
-            if ($lockedBook->copies()->whereIn('status', ['on_loan', 'reserved', 'unavailable', 'lost'])->exists()) {
+            if ($lockedBook->copies()->whereIn('status', ['on_loan', 'reserved', 'unavailable', 'lost', 'damaged'])->exists()) {
                 return 'unavailable';
             }
 
             if ($lockedBook->copies()->whereHas('loans')->exists() || $lockedBook->reservations()->exists()) {
                 return 'history';
+            }
+
+            if ($lockedBook->readingListItems()->exists()) {
+                return 'reading_lists';
             }
 
             $lockedBook->copies()->delete();
@@ -303,6 +311,10 @@ class CatalogController extends Controller
         } elseif ($removalError === 'history') {
             return back()->withErrors([
                 'book' => 'This book cannot be removed because its copy history is part of the loan record.',
+            ]);
+        } elseif ($removalError === 'reading_lists') {
+            return back()->withErrors([
+                'book' => 'This book is assigned to a course reading list. Remove it from the list before removing it from the catalog.',
             ]);
         }
 
@@ -321,7 +333,8 @@ class CatalogController extends Controller
         abort_unless($copy->book_id === $book->id, 404);
 
         $validated = $request->validate([
-            'status' => ['required', Rule::in(['available', 'unavailable', 'lost'])],
+            'status' => ['required', Rule::in(['available', 'unavailable', 'lost', 'damaged'])],
+            'condition_note' => ['required_if:status,damaged', 'nullable', 'string', 'min:5', 'max:2000'],
         ]);
 
         $updated = $book->getConnection()->transaction(function () use ($book, $copy, $validated, $reservations) {
@@ -334,7 +347,10 @@ class CatalogController extends Controller
 
             $wasAvailable = $lockedCopy->status === 'available';
             $willBeAvailable = $validated['status'] === 'available';
-            $lockedCopy->update(['status' => $validated['status']]);
+            $lockedCopy->update([
+                'status' => $validated['status'],
+                'condition_note' => $validated['condition_note'] ?? $lockedCopy->condition_note,
+            ]);
 
             if ($wasAvailable !== $willBeAvailable) {
                 $lockedBook->update([
@@ -362,8 +378,12 @@ class CatalogController extends Controller
             ->withCount('books')
             ->orderBy('name')
             ->paginate(20);
+        $mergeTargets = BookCategory::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
-        return view('catalog.categories', compact('categories'));
+        return view('catalog.categories', compact('categories', 'mergeTargets'));
     }
 
     public function storeCategory(Request $request)
@@ -390,6 +410,41 @@ class CatalogController extends Controller
         $category->update($validated);
 
         return redirect()->route('catalog.categories.index')->with('status', 'Category updated.');
+    }
+
+    public function mergeCategory(Request $request, BookCategory $category)
+    {
+        $validated = $request->validate([
+            'target_category_id' => [
+                'required',
+                'integer',
+                Rule::exists('book_categories', 'id')->where('is_active', true),
+            ],
+        ]);
+
+        if ((int) $validated['target_category_id'] === $category->id) {
+            return back()->withErrors(['target_category_id' => 'Choose a different category to merge into.']);
+        }
+
+        $bookCount = $category->getConnection()->transaction(function () use ($category, $validated): int {
+            $source = BookCategory::query()->lockForUpdate()->findOrFail($category->id);
+            $target = BookCategory::query()->lockForUpdate()->findOrFail($validated['target_category_id']);
+
+            if (! $target->is_active) {
+                throw ValidationException::withMessages([
+                    'target_category_id' => 'Books can only be merged into an active category.',
+                ]);
+            }
+
+            $bookCount = $source->books()->count();
+            $source->books()->update(['category_id' => $target->id]);
+            $source->update(['is_active' => false]);
+
+            return $bookCount;
+        });
+
+        return redirect()->route('catalog.categories.index')
+            ->with('status', "Merged {$bookCount} book(s) into the selected category. The source category is now inactive.");
     }
 
     private function bookRules(?Book $book = null): array

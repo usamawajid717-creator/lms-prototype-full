@@ -37,6 +37,8 @@ class CatalogManagementTest extends TestCase
 
         $this->get(route('catalog.index', ['search' => 'Laravel', 'availability' => 'available']))
             ->assertOk()
+            ->assertSee('css/library-theme.css')
+            ->assertSee('catalog-hero')
             ->assertSee('catalog-search-form')
             ->assertSee('catalog-results')
             ->assertSee('catalog-suggestions')
@@ -93,6 +95,72 @@ class CatalogManagementTest extends TestCase
 
         $this->get(route('catalog.index'))->assertOk()->assertDontSee('Hidden Book');
         $this->get(route('catalog.show', $book))->assertNotFound();
+    }
+
+    public function test_admin_can_edit_a_book_that_belongs_to_an_inactive_category(): void
+    {
+        $category = BookCategory::create(['name' => 'Archived for editing', 'is_active' => false]);
+        $book = Book::create([
+            'isbn' => '9780000000099',
+            'title' => 'Archived Book',
+            'authors' => 'A. Writer',
+            'category_id' => $category->id,
+            'total_copies' => 1,
+            'available_copies' => 1,
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->get(route('catalog.admin.edit', $book))
+            ->assertOk()
+            ->assertSee('Archived for editing')
+            ->assertSee('Archived Book');
+    }
+
+    public function test_admin_can_merge_category_books_into_another_category_without_changing_inventory(): void
+    {
+        $source = BookCategory::create(['name' => 'Source category', 'is_active' => true]);
+        $target = BookCategory::create(['name' => 'Destination category', 'is_active' => true]);
+        $book = Book::create([
+            'isbn' => '9780000000100',
+            'title' => 'Book being recategorized',
+            'authors' => 'A. Writer',
+            'category_id' => $source->id,
+            'total_copies' => 3,
+            'available_copies' => 2,
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->patch(route('catalog.categories.merge', $source), [
+            'target_category_id' => $target->id,
+        ])->assertRedirect(route('catalog.categories.index'))
+            ->assertSessionHas('status', 'Merged 1 book(s) into the selected category. The source category is now inactive.');
+
+        $this->assertSame($target->id, $book->fresh()->category_id);
+        $this->assertDatabaseHas('book_categories', ['id' => $source->id, 'is_active' => false]);
+        $this->assertDatabaseHas('books', [
+            'id' => $book->id,
+            'total_copies' => 3,
+            'available_copies' => 2,
+        ]);
+        $this->assertSame(3, $book->copies()->count());
+    }
+
+    public function test_category_merge_rejects_source_or_inactive_destination(): void
+    {
+        $source = BookCategory::create(['name' => 'Merge source', 'is_active' => true]);
+        $inactive = BookCategory::create(['name' => 'Inactive destination', 'is_active' => false]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->patch(route('catalog.categories.merge', $source), [
+            'target_category_id' => $source->id,
+        ])->assertSessionHasErrors('target_category_id');
+
+        $this->patch(route('catalog.categories.merge', $source), [
+            'target_category_id' => $inactive->id,
+        ])->assertSessionHasErrors('target_category_id');
+
+        $this->assertDatabaseHas('book_categories', ['id' => $source->id, 'is_active' => true]);
+        $this->assertDatabaseHas('book_categories', ['id' => $inactive->id, 'is_active' => false]);
     }
 
     public function test_admin_can_create_book_with_available_copies_initialized(): void

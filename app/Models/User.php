@@ -78,6 +78,11 @@ class User extends Authenticatable
         return $this->hasMany(BookReview::class);
     }
 
+    public function courseReadingLists(): HasMany
+    {
+        return $this->hasMany(CourseReadingList::class);
+    }
+
     public function pushSubscriptions(): HasMany
     {
         return $this->hasMany(PushSubscription::class);
