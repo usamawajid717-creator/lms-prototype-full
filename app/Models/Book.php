@@ -68,6 +68,11 @@ class Book extends Model
         return $this->hasMany(Reservation::class);
     }
 
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(BookReview::class);
+    }
+
     public function hasAvailableCopies(): bool
     {
         return $this->available_copies > 0;

@@ -22,6 +22,9 @@ This is a Laravel 11 / PHP 8.2+ web application. It contains the original job ap
 - Search supports title, author, ISBN, and publisher, with live results and an autocomplete dropdown for matching active-catalog books; filters support active category, publication year, and availability. Results are paginated and book details include bibliographic data and copy counts.
 - When adding a book, administrators can search Open Library for bibliographic suggestions and populate the form; details remain editable and must be reviewed before saving. Library inventory and copies remain managed locally.
 - Administrators can create and edit books with unique ISBN, title, author(s), publisher, year, edition, category, and total copies. Each physical copy receives a unique generated barcode and an availability status; administrators can review copies and barcodes and mark copies available, unavailable, or lost.
+- Members can request books not yet in the catalog and track request status. Administrators can approve or decline with a reason, then link an approved request to its catalog entry when fulfilled. Active requests for a matching title or ISBN are checked to reduce duplicates.
+- Signed-in members can rate and review books on their detail pages, update or remove their own review, and see community ratings; each member has one review per book.
+- Administrators can bulk-import books and copy inventory from a CSV template. Imports validate all rows and active categories before writing anything, reject duplicate ISBNs, and are limited to 500 books and 10,000 copies per import.
 - Administrators can optionally upload JPG, PNG, or WebP book covers (up to 5 MB); covers display in catalog listings and details and can be replaced or removed.
 - Copy totals are adjusted without overwriting copies currently unavailable, and a total cannot be reduced below the unavailable-copy count. Removed available copies are retired so loan history is retained. A book with unavailable copies or loan history cannot be removed.
 - Administrators can create and edit categories and deactivate them. Inactive categories remain associated with their books, but those books are hidden from public catalog pages.
@@ -41,6 +44,7 @@ This is a Laravel 11 / PHP 8.2+ web application. It contains the original job ap
 ## In-app notifications
 
 - Members receive in-app and email notifications when a reservation copy is ready, a pickup hold expires, an overdue fine is assessed, or a simulated fine payment is recorded. Email delivery uses Laravel's configured mailer; the default `log` mailer writes messages to the application log until an SMTP or other delivery transport is configured.
+- Members receive in-app and email notifications when an administrator approves, declines, or fulfills their book request. Decline notifications include the administrator's reason.
 - Members can opt in to SMS alerts from their profile. SMS uses a configured Twilio account and is disabled by default; opted-in phone numbers must use international E.164 format.
 - Members can enable browser push notifications from their profile. Subscriptions are per browser, obsolete endpoints are removed, and VAPID keys are generated with `php artisan webpush:vapid-keys`; push is disabled until configured.
 - The authenticated navigation displays an unread count. The notification inbox supports marking an item read while opening its related page, or marking all notifications read.

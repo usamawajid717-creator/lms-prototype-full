@@ -147,6 +147,7 @@
                             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Catalog</a>
                             <ul class="dropdown-menu">
                                 <li><a class="dropdown-item" href="{{ route('catalog.admin.index') }}">Manage books</a></li>
+                                <li><a class="dropdown-item" href="{{ route('catalog.admin.import-form') }}">Bulk CSV import</a></li>
                                 <li><a class="dropdown-item" href="{{ route('catalog.categories.index') }}">Categories</a></li>
                             </ul>
                         </li>
@@ -155,6 +156,7 @@
                             <ul class="dropdown-menu">
                                 <li><a class="dropdown-item" href="{{ route('loans.index') }}">Loans</a></li>
                                 <li><a class="dropdown-item" href="{{ route('reservations.index') }}">Reservations</a></li>
+                                <li><a class="dropdown-item" href="{{ route('book-requests.admin') }}">Book requests</a></li>
                                 <li><a class="dropdown-item" href="{{ route('members.index') }}">Members</a></li>
                             </ul>
                         </li>
@@ -176,6 +178,7 @@
                         <li class="nav-item"><a href="{{ route('dashboard.member') }}" class="nav-link"><i class="bi bi-grid-1x2-fill me-1"></i>My dashboard</a></li>
                         <li class="nav-item"><a href="{{ route('loans.mine') }}" class="nav-link">My loans</a></li>
                         <li class="nav-item"><a href="{{ route('reservations.mine') }}" class="nav-link">My reservations</a></li>
+                        <li class="nav-item"><a href="{{ route('book-requests.mine') }}" class="nav-link">Book requests</a></li>
                         <li class="nav-item"><a href="{{ route('members.index') }}" class="nav-link">Members</a></li>
                     @endif
                 @endauth

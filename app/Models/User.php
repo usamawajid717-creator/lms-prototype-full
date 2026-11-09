@@ -68,6 +68,16 @@ class User extends Authenticatable
         return $this->hasMany(Reservation::class);
     }
 
+    public function bookRequests(): HasMany
+    {
+        return $this->hasMany(BookRequest::class);
+    }
+
+    public function bookReviews(): HasMany
+    {
+        return $this->hasMany(BookReview::class);
+    }
+
     public function pushSubscriptions(): HasMany
     {
         return $this->hasMany(PushSubscription::class);

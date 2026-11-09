@@ -166,8 +166,9 @@ class CatalogController extends Controller
             ->exists() ?? false;
 
         return view('catalog.show', [
-            'book' => $book->load('category'),
+            'book' => $book->load(['category', 'reviews.member']),
             'activeReservation' => $activeReservation,
+            'myReview' => $request->user()?->bookReviews()->where('book_id', $book->id)->first(),
         ]);
     }
 

@@ -9,6 +9,7 @@
         <p class="text-muted mb-0">Add and update books and their registered copy counts.</p>
     </div>
     <div class="d-flex gap-2">
+        <a href="{{ route('catalog.admin.import-form') }}" class="btn btn-outline-primary">Import CSV</a>
         <a href="{{ route('catalog.categories.index') }}" class="btn btn-outline-primary">Manage Categories</a>
         <a href="{{ route('catalog.admin.create') }}" class="btn btn-primary btn-submit text-white"><i class="bi bi-plus-lg me-1"></i>Add Book</a>
     </div>

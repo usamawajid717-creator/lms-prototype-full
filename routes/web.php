@@ -3,6 +3,9 @@
 use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CatalogController;
+use App\Http\Controllers\CatalogImportController;
+use App\Http\Controllers\BookRequestController;
+use App\Http\Controllers\BookReviewController;
 use App\Http\Controllers\MemberController;
 use App\Http\Controllers\LoanController;
 use App\Http\Controllers\FineController;
@@ -41,6 +44,11 @@ Route::middleware(['auth', 'audit'])->group(function () {
     Route::post('/logout', [AuthController::class, 'destroy'])->name('logout');
     Route::middleware('role:member')->group(function () {
         Route::get('/my-dashboard', [MemberDashboardController::class, 'index'])->name('dashboard.member');
+        Route::get('/book-requests', [BookRequestController::class, 'mine'])->name('book-requests.mine');
+        Route::post('/book-requests', [BookRequestController::class, 'store'])->name('book-requests.store');
+        Route::get('/book-requests/book-suggestions', [CatalogController::class, 'bookSuggestions'])->name('book-requests.book-suggestions');
+        Route::put('/catalog/{book}/reviews', [BookReviewController::class, 'store'])->name('book-reviews.store');
+        Route::delete('/catalog/{book}/reviews', [BookReviewController::class, 'destroy'])->name('book-reviews.destroy');
     });
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::patch('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
@@ -62,6 +70,9 @@ Route::middleware(['auth', 'audit'])->group(function () {
         Route::put('/admin/library-policies', [LibraryPolicyController::class, 'update'])->name('library-policies.update');
         Route::get('/admin/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
         Route::get('/admin/catalog', [CatalogController::class, 'adminIndex'])->name('catalog.admin.index');
+        Route::get('/admin/catalog/import', [CatalogImportController::class, 'create'])->name('catalog.admin.import-form');
+        Route::get('/admin/catalog/import-template', [CatalogImportController::class, 'template'])->name('catalog.admin.import-template');
+        Route::post('/admin/catalog/import', [CatalogImportController::class, 'store'])->name('catalog.admin.import');
         Route::get('/admin/catalog/create', [CatalogController::class, 'create'])->name('catalog.admin.create');
         Route::get('/admin/catalog/book-suggestions', [CatalogController::class, 'bookSuggestions'])->name('catalog.admin.book-suggestions');
         Route::post('/admin/catalog', [CatalogController::class, 'store'])->name('catalog.admin.store');
@@ -70,6 +81,8 @@ Route::middleware(['auth', 'audit'])->group(function () {
         Route::patch('/admin/catalog/{book}/copies/{copy}', [CatalogController::class, 'updateCopyStatus'])->name('catalog.admin.copies.update');
         Route::put('/admin/catalog/{book}', [CatalogController::class, 'update'])->name('catalog.admin.update');
         Route::delete('/admin/catalog/{book}', [CatalogController::class, 'destroy'])->name('catalog.admin.destroy');
+        Route::get('/admin/book-requests', [BookRequestController::class, 'adminIndex'])->name('book-requests.admin');
+        Route::patch('/admin/book-requests/{bookRequest}', [BookRequestController::class, 'update'])->name('book-requests.update');
         Route::get('/admin/categories', [CatalogController::class, 'categories'])->name('catalog.categories.index');
         Route::post('/admin/categories', [CatalogController::class, 'storeCategory'])->name('catalog.categories.store');
         Route::put('/admin/categories/{category}', [CatalogController::class, 'updateCategory'])->name('catalog.categories.update');
